@@ -28,6 +28,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
   assert.equal(pkg.dshClient, undefined)
   assert.equal(pkg.main, 'lib/index.js')
   assert.equal(pkg.types, 'lib/types/index.d.ts')
+  assert.ok(pkg.files.includes('assets'))
   assert.ok(pkg.files.includes('lib'))
   assert.ok(pkg.files.includes('src'))
   assert.ok(pkg.files.includes('scripts'))
