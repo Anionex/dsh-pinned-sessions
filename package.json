@@ -1,0 +1,97 @@
+{
+  "name": "@anionex/dsh-pinned-sessions",
+  "version": "0.1.0",
+  "description": "Pin important DeepSeek Harness sessions at the top of the workspace sidebar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anionex/dsh-pinned-sessions.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Anionex/dsh-pinned-sessions/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "scripts",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    },
+    "compatibility": {
+      "dsh": ">=0.1.0-rc.8 <0.2.0",
+      "dshReleases": {
+        "0.1.1-rc.1": "compatible",
+        "0.1.2-alpha.1": "compatible"
+      },
+      "profiles": [
+        "web",
+        "desktop"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsc -p tsconfig.client.json && esbuild src/client/index.tsx --bundle --platform=browser --format=cjs --jsx=automatic --external:react --external:react/jsx-runtime --external:react-dom --sourcemap --outfile=.client-build/index.js && node scripts/wrap-client.mjs",
+    "check": "tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit false --emitDeclarationOnly true && pnpm run build && vitest run && node --test tests/package-layout.test.mjs && pnpm pack --dry-run",
+    "prepack": "pnpm run build",
+    "test": "vitest run && node --test tests/package-layout.test.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "sessions",
+    "sidebar",
+    "productivity"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
+    "esbuild": "^0.25.9",
+    "jsdom": "^26.1.0",
+    "lucide": "0.468.0",
+    "lucide-react": "^0.468.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.8.0"
+}
