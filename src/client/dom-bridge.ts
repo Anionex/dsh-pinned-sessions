@@ -126,9 +126,10 @@ function belongsToTrigger(menu: HTMLElement, trigger: TriggerRect | undefined): 
     Math.abs(menuRect.left - trigger.left),
     Math.abs(menuRect.right - trigger.right),
   )
-  const verticalGap = Math.min(
-    Math.abs(menuRect.top - trigger.bottom),
-    Math.abs(menuRect.bottom - trigger.top),
+  const verticalGap = Math.max(
+    0,
+    menuRect.top - trigger.bottom,
+    trigger.top - menuRect.bottom,
   )
   return horizontalGap <= 64 && verticalGap <= 32
 }
@@ -186,7 +187,7 @@ export function attachSessionMenuHost(menu: HTMLElement, sessionId: string): Ses
     node instanceof HTMLElement
     && node.querySelector(':scope > button[role="menuitem"]') instanceof HTMLButtonElement
   ))
-  if (wrappers.length !== 3) return null
+  if (wrappers.length < 3 || wrappers.length > 4) return null
   const templateButton = wrappers[0]?.querySelector<HTMLButtonElement>(':scope > button[role="menuitem"]')
   if (templateButton === null || templateButton === undefined) return null
   const spans = [...templateButton.children].filter((node): node is HTMLSpanElement => node instanceof HTMLSpanElement)
@@ -207,7 +208,7 @@ export function attachSessionMenuHost(menu: HTMLElement, sessionId: string): Ses
   label.className = spans.at(-1)?.className ?? ''
   button.append(icon, label)
   host.appendChild(button)
-  viewport.insertBefore(host, wrappers.at(-1) ?? null)
+  viewport.insertBefore(host, wrappers[2] ?? null)
   menu.setAttribute(MENU_OWNER_ATTRIBUTE, sessionId)
 
   const target = { host, menu, sessionId, button, icon, label }

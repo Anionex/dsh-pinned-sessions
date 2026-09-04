@@ -137,12 +137,20 @@ describe('Portal hosts', () => {
     window.removeEventListener('resize', resize)
   })
 
-  it('claims only a newly created menu and rejects non-Session menu structure', () => {
+  it('supports the Desktop four-row menu and inserts before archive/delete', () => {
+    const menu = makeSessionMenu(['Rename', 'Fork', 'Archive', 'Delete'])
+    const target = attachSessionMenuHost(menu, 'desktop-session')
+    expect(target?.host.previousElementSibling?.textContent).toBe('Fork')
+    expect(target?.host.nextElementSibling?.textContent).toBe('Archive')
+    expect(target?.host.parentElement?.lastElementChild?.textContent).toBe('Delete')
+  })
+
+  it('claims only a newly created menu and rejects unsupported menu structure', () => {
     const oldMenu = makeSessionMenu()
     const beforeClick = new Set(listPortalMenus(document))
     expect(findUnclaimedPortalMenu(document, beforeClick)).toBeNull()
 
-    const viewOptions = makeSessionMenu(['Newest first', 'Oldest first', 'Expanded', 'Compact'])
+    const viewOptions = makeSessionMenu(['One', 'Two', 'Three', 'Four', 'Five'])
     expect(findUnclaimedPortalMenu(document, beforeClick)).toBe(viewOptions)
     expect(attachSessionMenuHost(viewOptions, 'stale-session')).toBeNull()
 
@@ -172,6 +180,29 @@ describe('Portal hosts', () => {
       width: 16,
       height: 16,
     })).toBeNull()
+  })
+
+  it('accepts a legitimate bottom-clamped menu that overlaps its trigger', () => {
+    const menu = makeSessionMenu()
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
+      top: 658,
+      right: 462,
+      bottom: 788,
+      left: 244,
+      width: 218,
+      height: 130,
+      x: 244,
+      y: 658,
+      toJSON: () => ({}),
+    })
+    expect(findUnclaimedPortalMenu(document, new Set(), {
+      top: 700,
+      right: 260,
+      bottom: 728,
+      left: 244,
+      width: 16,
+      height: 28,
+    })).toBe(menu)
   })
 
   it('hands focus to the next pin or the selected native row after unpin', () => {
