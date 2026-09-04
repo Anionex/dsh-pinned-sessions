@@ -6,21 +6,22 @@ Pin important DeepSeek Harness sessions at the top of the Workspace sidebar.
 
 - Adds **Pin session** / **Unpin session** to the native Session actions menu.
 - Keeps pinned Sessions in a compact list above the native Workspace tree.
+- Shows the same actions on a pinned row as on its native Session row, with **Unpin session** added in place of **Pin session**.
 - Opens a pinned Session through the official DSH Session service.
-- Preserves the original Session in its Workspace and keeps search, grouping, drag ordering, fork, rename, and archive behavior unchanged.
+- Preserves the original Session in its Workspace and keeps search, grouping, drag ordering, fork, rename, archive, and optional delete behavior unchanged.
 - Stores pins in versioned browser-profile storage and removes stale or archived entries after DSH data is ready.
 - Supports both the DSH `web` profile and DSH Desktop's embedded Web client.
 
 ## Install
 
-From a checkout:
+From npm:
 
 ```bash
-dsh plugin --profile web add .
-dsh plugin --profile desktop add .
+dsh plugin --profile web add @anionex/dsh-pinned-sessions
+dsh plugin --profile desktop add @anionex/dsh-pinned-sessions
 ```
 
-Restart each long-running profile after installation. Open a Session's `...` menu and choose **Pin session**. The pinned list appears directly below the Workspace header.
+Or from a source checkout, replace the package name with `.`. Restart each long-running profile after installation. Open a Session's `...` menu and choose **Pin session**. The pinned list appears directly below the Workspace header.
 
 Pins persist independently in each browser/Desktop profile. They are UI preferences and are not written into Session logs or Workspace files.
 

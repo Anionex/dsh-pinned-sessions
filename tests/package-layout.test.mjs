@@ -19,10 +19,12 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
       '@deepseek-ai/dsh-client-ui-layout',
       '@deepseek-ai/dsh-client-ui-session',
       '@deepseek-ai/dsh-client-ui-workspace',
+      '@deepseek-ai/dsh-client-ui-primitives',
       '@deepseek-ai/dsh-client-locale',
     ],
   })
   assert.deepEqual(pkg.dsh?.compatibility?.profiles, ['web', 'desktop'])
+  assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh-client-ui-primitives'], '>=0.1.0-rc.8 <0.2.0')
   assert.equal(pkg.dshClient, undefined)
   assert.equal(pkg.main, 'lib/index.js')
   assert.equal(pkg.types, 'lib/types/index.d.ts')
@@ -47,6 +49,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
     /^window\.__ModuleLoader__\.load\(\{ id: "@anionex\/dsh-pinned-sessions"/u,
   )
   assert.doesNotMatch(clientBundle, /\bReact\.createElement\b/u)
+  assert.match(clientBundle, /require\("@deepseek-ai\/dsh-client-ui-primitives"\)/u)
 
   for (const [name, specifier] of Object.entries(pkg.devDependencies ?? {})) {
     assert.equal(

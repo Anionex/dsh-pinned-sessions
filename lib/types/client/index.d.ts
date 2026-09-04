@@ -40,15 +40,41 @@ interface SlotsLike {
 interface LocaleLike {
     register(namespace: string, dictionaries: Readonly<Record<string, Readonly<Record<string, string>>>>): () => void;
 }
+interface ResultLike {
+    readonly ok: boolean;
+    readonly error?: {
+        readonly message: string;
+    } | undefined;
+}
+interface ClientSessionsLike extends SessionsForCapture {
+    binding(sessionId: string): {
+        readonly session: {
+            rename(title: string): Promise<ResultLike>;
+        };
+    } | undefined;
+    fork(input: {
+        readonly sessionId: string;
+        readonly increaseTitle: boolean;
+    }): Promise<string>;
+}
 interface ClientContextLike {
     readonly slots: SlotsLike;
-    readonly sessions: SessionsForCapture;
+    readonly sessions: ClientSessionsLike;
     readonly locale: LocaleLike;
+    get(name: string): unknown;
     effect(setup: () => (() => void), label?: string): unknown;
+}
+export interface PinnedSessionActions {
+    readonly renameSession: (sessionId: string, title: string) => Promise<void>;
+    readonly forkSession: (sessionId: string) => void;
+    readonly archiveSession: (sessionId: string) => Promise<void>;
+    readonly canDeleteSession: () => boolean;
+    readonly deleteSession: (sessionId: string) => Promise<void>;
 }
 interface BridgeProps {
     readonly store: PinStore;
     readonly sessions: SessionsForCapture;
+    readonly actions: PinnedSessionActions;
     readonly useSessions: SelectorHook<SessionsSnapshotLike>;
     readonly useWorkspaces: SelectorHook<WorkspacesSnapshotLike>;
     readonly t: Translate;
@@ -57,5 +83,5 @@ export declare const inject: string[];
 /** Register the lifecycle bridge in the additive frame overlay slot. */
 export declare function apply(ctx: ClientContextLike): void;
 /** Keep native behavior intact while mounting the sidebar portal and unmanaged menu item. */
-export declare function PinnedSessionsBridge({ store, sessions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode;
+export declare function PinnedSessionsBridge({ store, sessions, actions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode;
 export {};

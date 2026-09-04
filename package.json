@@ -1,6 +1,6 @@
 {
   "name": "@anionex/dsh-pinned-sessions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pin important DeepSeek Harness sessions at the top of the workspace sidebar",
   "repository": {
     "type": "git",
@@ -43,6 +43,7 @@
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-locale"
       ]
     },
@@ -59,7 +60,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsc -p tsconfig.client.json && esbuild src/client/index.tsx --bundle --platform=browser --format=cjs --jsx=automatic --external:react --external:react/jsx-runtime --external:react-dom --sourcemap --outfile=.client-build/index.js && node scripts/wrap-client.mjs",
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsc -p tsconfig.client.json && esbuild src/client/index.tsx --bundle --platform=browser --format=cjs --jsx=automatic --external:react --external:react/jsx-runtime --external:react-dom --external:@deepseek-ai/dsh-client-ui-primitives --sourcemap --outfile=.client-build/index.js && node scripts/wrap-client.mjs",
     "check": "tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit false --emitDeclarationOnly true && pnpm run build && vitest run && node --test tests/package-layout.test.mjs && pnpm pack --dry-run",
     "prepack": "pnpm run build",
     "test": "vitest run && node --test tests/package-layout.test.mjs"
@@ -74,6 +75,7 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.1.0-rc.8 <0.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

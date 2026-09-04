@@ -6,21 +6,22 @@
 
 - 在原生会话“...”菜单中增加“置顶会话 / 取消置顶”。
 - 在原生工作区树上方显示紧凑的置顶会话列表。
+- 置顶行的“...”菜单与原生会话行保持相同操作，并用“取消置顶”替换“置顶会话”。
 - 点击置顶项时通过 DSH 官方 Session 服务打开会话。
-- 原会话仍保留在原工作区中，搜索、分组、拖拽排序、分叉、重命名和归档全部保持原样。
+- 原会话仍保留在原工作区中，搜索、分组、拖拽排序、分叉、重命名、归档和可选的删除操作全部保持原样。
 - 使用带版本号的浏览器 profile 存储；DSH 数据就绪后自动移除已归档或已消失的条目。
 - 同时支持 DSH `web` profile 和 DSH Desktop 内嵌的 Web 客户端。
 
 ## 安装
 
-在插件仓库中执行：
+从 npm 安装：
 
 ```bash
-dsh plugin --profile web add .
-dsh plugin --profile desktop add .
+dsh plugin --profile web add @anionex/dsh-pinned-sessions
+dsh plugin --profile desktop add @anionex/dsh-pinned-sessions
 ```
 
-安装后重启对应的长期运行 profile。打开任意会话的“...”菜单并选择“置顶会话”，置顶区会出现在“工作区”标题正下方。
+如需从源码 checkout 安装，把包名替换为 `.`。安装后重启对应的长期运行 profile。打开任意会话的“...”菜单并选择“置顶会话”，置顶区会出现在“工作区”标题正下方。
 
 Web 与 Desktop 各自在自己的浏览器 profile 中持久化置顶状态；该状态不会写入会话日志或工作区文件。
 
