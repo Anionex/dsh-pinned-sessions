@@ -38,6 +38,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
   assert.match(workspace, /^packages:\n  - \.\n/mu)
   assert.match(workspace, /^nodeLinker: hoisted$/mu)
   assert.match(workspace, /^autoInstallPeers: false$/mu)
+  assert.match(workspace, /^overrides:\n  postcss: 8\.5\.27$/mu)
 
   await access(new URL(pkg.main, root))
   await access(new URL(pkg.types, root))
