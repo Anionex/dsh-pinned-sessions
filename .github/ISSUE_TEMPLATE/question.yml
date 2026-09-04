@@ -1,0 +1,31 @@
+name: Usage question
+description: Ask about installation, compatibility, or expected behavior
+title: "question: "
+labels: [question]
+body:
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+    validations:
+      required: true
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness version
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options: [Web, Desktop]
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Include what you tried and the result. Remove private data first.
+    validations:
+      required: true

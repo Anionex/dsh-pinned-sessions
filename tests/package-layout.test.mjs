@@ -19,13 +19,16 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
       '@deepseek-ai/dsh-client-ui-layout',
       '@deepseek-ai/dsh-client-ui-session',
       '@deepseek-ai/dsh-client-ui-workspace',
+      '@deepseek-ai/dsh-client-ui-primitives',
       '@deepseek-ai/dsh-client-locale',
     ],
   })
   assert.deepEqual(pkg.dsh?.compatibility?.profiles, ['web', 'desktop'])
+  assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh-client-ui-primitives'], '>=0.1.0-rc.8 <0.2.0')
   assert.equal(pkg.dshClient, undefined)
   assert.equal(pkg.main, 'lib/index.js')
   assert.equal(pkg.types, 'lib/types/index.d.ts')
+  assert.ok(pkg.files.includes('assets'))
   assert.ok(pkg.files.includes('lib'))
   assert.ok(pkg.files.includes('src'))
   assert.ok(pkg.files.includes('scripts'))
@@ -35,6 +38,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
   assert.match(workspace, /^packages:\n  - \.\n/mu)
   assert.match(workspace, /^nodeLinker: hoisted$/mu)
   assert.match(workspace, /^autoInstallPeers: false$/mu)
+  assert.match(workspace, /^overrides:\n  postcss: 8\.5\.27$/mu)
 
   await access(new URL(pkg.main, root))
   await access(new URL(pkg.types, root))
@@ -47,6 +51,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
     /^window\.__ModuleLoader__\.load\(\{ id: "@anionex\/dsh-pinned-sessions"/u,
   )
   assert.doesNotMatch(clientBundle, /\bReact\.createElement\b/u)
+  assert.match(clientBundle, /require\("@deepseek-ai\/dsh-client-ui-primitives"\)/u)
 
   for (const [name, specifier] of Object.entries(pkg.devDependencies ?? {})) {
     assert.equal(
