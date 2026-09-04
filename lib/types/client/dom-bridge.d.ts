@@ -14,13 +14,21 @@ export interface SessionActionTarget {
     readonly button: HTMLButtonElement;
     readonly row: HTMLElement;
 }
-export interface MenuPortalTarget {
+export interface SessionMenuTarget {
     readonly host: HTMLDivElement;
     readonly menu: HTMLElement;
     readonly sessionId: string;
-    readonly buttonClassName: string;
-    readonly iconClassName: string;
-    readonly labelClassName: string;
+    readonly button: HTMLButtonElement;
+    readonly icon: HTMLSpanElement;
+    readonly label: HTMLSpanElement;
+}
+export interface TriggerRect {
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+    readonly left: number;
+    readonly width: number;
+    readonly height: number;
 }
 /** Identify a native ellipsis trigger inside a real Session row. */
 export declare function findSessionActionTarget(target: EventTarget | null): SessionActionTarget | null;
@@ -33,8 +41,14 @@ export declare function findSessionActionTarget(target: EventTarget | null): Ses
 export declare function captureSessionId(row: HTMLElement, sessions: SessionsForCapture): string | null;
 /** Insert the pinned region immediately after the native Workspace header. */
 export declare function ensurePinnedHost(doc: Document): HTMLDivElement | null;
-/** Find the newest unclaimed native portal menu after a Session trigger click. */
-export declare function findUnclaimedPortalMenu(doc: Document): HTMLElement | null;
-/** Add one host row to a native Session menu, before its destructive/archive tail. */
-export declare function attachSessionMenuHost(menu: HTMLElement, sessionId: string): MenuPortalTarget | null;
+/** List direct-body portal menus so one trigger can exclude every pre-existing menu. */
+export declare function listPortalMenus(doc: Document): readonly HTMLElement[];
+/** Find only a new, geometrically associated portal menu after one trigger click. */
+export declare function findUnclaimedPortalMenu(doc: Document, excluded?: ReadonlySet<HTMLElement>, trigger?: TriggerRect): HTMLElement | null;
+/** Update the unmanaged item without moving it into the plugin's React tree. */
+export declare function updateSessionMenuItem(target: SessionMenuTarget, pinned: boolean, label: string): void;
+/** Add an unmanaged native-styled row before the Session menu's archive tail. */
+export declare function attachSessionMenuHost(menu: HTMLElement, sessionId: string): SessionMenuTarget | null;
+/** Restore useful keyboard focus after a pinned row removes itself. */
+export declare function focusAfterPinnedRemoval(doc: Document, host: HTMLElement | null, removedIndex: number): boolean;
 export declare function removeBridgeArtifacts(doc: Document): void;

@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import { Pin, PinOff, X } from 'lucide-react'
+import { Pin, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import {
   attachSessionMenuHost,
@@ -15,8 +15,14 @@ import {
   ensurePinnedHost,
   findSessionActionTarget,
   findUnclaimedPortalMenu,
+  focusAfterPinnedRemoval,
+  listPortalMenus,
+  MENU_OWNER_ATTRIBUTE,
   removeBridgeArtifacts,
-  type MenuPortalTarget,
+  SIDEBAR_SLOT_SELECTOR,
+  updateSessionMenuItem,
+  type SessionMenuTarget,
+  type TriggerRect,
   type SessionsForCapture,
 } from './dom-bridge.js'
 import { PIN_STORAGE_KEY, PinStore } from './pin-store.js'
@@ -87,8 +93,19 @@ interface BridgeProps {
 }
 
 interface PinIconProps {
-  readonly crossed?: boolean
   readonly size?: number
+}
+
+interface PendingMenuRequest {
+  readonly sessionId: string
+  readonly createdAt: number
+  readonly existingMenus: ReadonlySet<HTMLElement>
+  readonly triggerRect: TriggerRect
+}
+
+interface ActiveMenuBinding {
+  readonly target: SessionMenuTarget
+  readonly onClick: (event: MouseEvent) => void
 }
 
 const NS = 'pinnedSessions'
@@ -174,45 +191,89 @@ export function apply(ctx: ClientContextLike): void {
   }, PinnedSessionsBridge))
 }
 
-/** Keep native sidebar behavior intact while portalling the two added surfaces. */
+/** Keep native behavior intact while mounting the sidebar portal and unmanaged menu item. */
 export function PinnedSessionsBridge({ store, sessions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode {
   const sessionSnapshot = useSessions(snapshot => snapshot)
   const workspaceSnapshot = useWorkspaces(snapshot => snapshot)
   const pins = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [sidebarHost, setSidebarHost] = useState<HTMLDivElement | null>(null)
   const [sidebarWide, setSidebarWide] = useState(true)
-  const [menuTarget, setMenuTarget] = useState<MenuPortalTarget | null>(null)
-  const pending = useRef<{ readonly sessionId: string; readonly createdAt: number } | null>(null)
+  const pending = useRef<PendingMenuRequest | null>(null)
+  const activeMenu = useRef<ActiveMenuBinding | null>(null)
+  const focusAfterUnpin = useRef<number | null>(null)
 
   useLayoutEffect(() => {
     let active = true
     let queued = false
     let settleTimer: number | undefined
+    let observedSidebar: Element | null = null
+    const sidebarObserver = new MutationObserver(() => { queueRefresh() })
+
+    const disposeActiveMenu = (): void => {
+      const binding = activeMenu.current
+      if (binding === null) return
+      activeMenu.current = null
+      binding.target.button.removeEventListener('click', binding.onClick)
+      binding.target.host.remove()
+      if (binding.target.menu.getAttribute(MENU_OWNER_ATTRIBUTE) === binding.target.sessionId) {
+        binding.target.menu.removeAttribute(MENU_OWNER_ATTRIBUTE)
+      }
+    }
+    const updateActiveMenu = (): void => {
+      const binding = activeMenu.current
+      if (binding === null) return
+      const pinned = store.isPinned(binding.target.sessionId)
+      updateSessionMenuItem(binding.target, pinned, t(pinned ? 'menu.unpin' : 'menu.pin'))
+    }
+    const observeSidebar = (): void => {
+      const slot = document.querySelector(SIDEBAR_SLOT_SELECTOR)
+      if (slot === observedSidebar) return
+      sidebarObserver.disconnect()
+      observedSidebar = slot
+      if (slot !== null) {
+        sidebarObserver.observe(slot, {
+          attributes: true,
+          attributeFilter: ['class', 'style'],
+          childList: true,
+          subtree: true,
+        })
+      }
+    }
     const refresh = (): void => {
       if (!active) return
       const nextHost = ensurePinnedHost(document)
       setSidebarHost(current => current === nextHost ? current : nextHost)
+      observeSidebar()
       const rootWidth = nextHost?.parentElement?.getBoundingClientRect().width
       if (rootWidth !== undefined) setSidebarWide(rootWidth >= 160)
-      setMenuTarget(current => {
-        if (current === null || (current.host.isConnected && current.menu.isConnected)) return current
-        current?.menu.removeAttribute('data-dsh-pinned-session-menu')
-        return null
-      })
+
+      const binding = activeMenu.current
+      if (binding !== null && (!binding.target.host.isConnected || !binding.target.menu.isConnected)) {
+        disposeActiveMenu()
+      }
       const request = pending.current
       if (request === null) return
       if (Date.now() - request.createdAt > MENU_ASSOCIATION_MS) {
         pending.current = null
         return
       }
-      const menu = findUnclaimedPortalMenu(document)
+      const menu = findUnclaimedPortalMenu(document, request.existingMenus, request.triggerRect)
       if (menu === null) return
       const target = attachSessionMenuHost(menu, request.sessionId)
       if (target === null) return
+      const onClick = (event: MouseEvent): void => {
+        event.preventDefault()
+        event.stopPropagation()
+        store.toggle(target.sessionId)
+        disposeActiveMenu()
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      }
+      target.button.addEventListener('click', onClick)
+      activeMenu.current = { target, onClick }
       pending.current = null
-      setMenuTarget(target)
+      updateActiveMenu()
     }
-    const queueRefresh = (): void => {
+    function queueRefresh(): void {
       if (!active) return
       if (settleTimer === undefined) {
         settleTimer = window.setTimeout(() => {
@@ -228,31 +289,48 @@ export function PinnedSessionsBridge({ store, sessions, useSessions, useWorkspac
       })
     }
     const onClickCapture = (event: MouseEvent): void => {
+      pending.current = null
       const target = findSessionActionTarget(event.target)
       if (target === null) return
       const sessionId = captureSessionId(target.row, sessions)
       if (sessionId === null) return
-      pending.current = { sessionId, createdAt: Date.now() }
+      const rect = target.button.getBoundingClientRect()
+      pending.current = {
+        sessionId,
+        createdAt: Date.now(),
+        existingMenus: new Set(listPortalMenus(document)),
+        triggerRect: {
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        },
+      }
       queueRefresh()
     }
+    const onKeyDownCapture = (): void => { pending.current = null }
 
     refresh()
     document.addEventListener('click', onClickCapture, true)
-    const observer = new MutationObserver(queueRefresh)
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['class', 'style'],
-      childList: true,
-      subtree: true,
-    })
+    document.addEventListener('keydown', onKeyDownCapture, true)
+    const bodyObserver = new MutationObserver(() => { queueRefresh() })
+    bodyObserver.observe(document.body, { childList: true })
+    const unsubscribe = store.subscribe(updateActiveMenu)
     return () => {
       active = false
+      pending.current = null
       if (settleTimer !== undefined) window.clearTimeout(settleTimer)
-      observer.disconnect()
+      unsubscribe()
+      bodyObserver.disconnect()
+      sidebarObserver.disconnect()
       document.removeEventListener('click', onClickCapture, true)
+      document.removeEventListener('keydown', onKeyDownCapture, true)
+      disposeActiveMenu()
       removeBridgeArtifacts(document)
     }
-  }, [sessions])
+  }, [sessions, store, t])
 
   useLayoutEffect(() => {
     if (sidebarHost === null) return
@@ -289,44 +367,35 @@ export function PinnedSessionsBridge({ store, sessions, useSessions, useWorkspac
     })
   }, [pins, sessionSnapshot.byId, t, workspaceSnapshot.items])
 
-  const dismissMenu = (): void => {
-    const target = menuTarget
-    setMenuTarget(null)
-    target?.host.remove()
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-  }
+  useLayoutEffect(() => {
+    const removedIndex = focusAfterUnpin.current
+    if (removedIndex === null) return
+    focusAfterUnpin.current = null
+    focusAfterPinnedRemoval(document, sidebarHost, removedIndex)
+  }, [rows, sidebarHost])
 
-  return <>
-    {sidebarHost !== null && sidebarHost.isConnected && sidebarWide && rows.length > 0 && createPortal(
-      <PinnedSessionSection
-        currentId={sessionSnapshot.current}
-        rows={rows}
-        open={sessionId => { sessions.open(sessionId) }}
-        unpin={sessionId => { store.toggle(sessionId) }}
-        t={t}
-      />,
-      sidebarHost,
-    )}
-    {menuTarget !== null && menuTarget.host.isConnected && createPortal(
-      <SessionPinMenuItem
-        target={menuTarget}
-        pinned={store.isPinned(menuTarget.sessionId)}
-        toggle={() => {
-          store.toggle(menuTarget.sessionId)
-          dismissMenu()
-        }}
-        t={t}
-      />,
-      menuTarget.host,
-    )}
-  </>
+  return sidebarHost !== null && sidebarHost.isConnected && sidebarWide && rows.length > 0
+    ? createPortal(
+        <PinnedSessionSection
+          currentId={sessionSnapshot.current}
+          rows={rows}
+          open={sessionId => { sessions.open(sessionId) }}
+          unpin={(sessionId, index) => {
+            focusAfterUnpin.current = index
+            store.toggle(sessionId)
+          }}
+          t={t}
+        />,
+        sidebarHost,
+      )
+    : null
 }
 
 interface PinnedSessionSectionProps {
   readonly currentId?: string | undefined
   readonly rows: readonly { readonly session: SessionSummaryLike; readonly title: string; readonly workspace: string }[]
   readonly open: (sessionId: string) => void
-  readonly unpin: (sessionId: string) => void
+  readonly unpin: (sessionId: string, index: number) => void
   readonly t: Translate
 }
 
@@ -337,7 +406,7 @@ function PinnedSessionSection({ currentId, rows, open, unpin, t }: PinnedSession
       <span>{t('section.label')}</span>
     </div>
     <ul className="dsh-pins-list">
-      {rows.map(({ session, title, workspace }) => <li
+      {rows.map(({ session, title, workspace }, index) => <li
         className="dsh-pins-row"
         data-current={session.id === currentId ? 'true' : 'false'}
         key={session.id}
@@ -358,7 +427,7 @@ function PinnedSessionSection({ currentId, rows, open, unpin, t }: PinnedSession
           className="dsh-pins-remove"
           aria-label={t('session.unpin', { name: title })}
           title={t('session.unpin', { name: title })}
-          onClick={() => { unpin(session.id) }}
+          onClick={() => { unpin(session.id, index) }}
         >
           <CloseIcon />
         </button>
@@ -367,30 +436,8 @@ function PinnedSessionSection({ currentId, rows, open, unpin, t }: PinnedSession
   </section>
 }
 
-interface SessionPinMenuItemProps {
-  readonly target: MenuPortalTarget
-  readonly pinned: boolean
-  readonly toggle: () => void
-  readonly t: Translate
-}
-
-function SessionPinMenuItem({ target, pinned, toggle, t }: SessionPinMenuItemProps): ReactNode {
-  const label = t(pinned ? 'menu.unpin' : 'menu.pin')
-  return <button
-    type="button"
-    role="menuitem"
-    className={`${target.buttonClassName} dsh-pins-menu-button`}
-    aria-label={label}
-    onClick={toggle}
-  >
-    <span className={target.iconClassName} aria-hidden="true"><PinIcon crossed={pinned} /></span>
-    <span className={target.labelClassName}>{label}</span>
-  </button>
-}
-
-function PinIcon({ crossed = false, size = 16 }: PinIconProps): ReactNode {
-  const Icon = crossed ? PinOff : Pin
-  return <Icon size={size} strokeWidth={1.8} aria-hidden="true" />
+function PinIcon({ size = 16 }: PinIconProps): ReactNode {
+  return <Pin size={size} strokeWidth={1.8} aria-hidden="true" />
 }
 
 function CloseIcon(): ReactNode {

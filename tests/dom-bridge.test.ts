@@ -5,10 +5,13 @@ import {
   ensurePinnedHost,
   findSessionActionTarget,
   findUnclaimedPortalMenu,
+  focusAfterPinnedRemoval,
+  listPortalMenus,
   MENU_HOST_ATTRIBUTE,
   MENU_OWNER_ATTRIBUTE,
   PINNED_HOST_ATTRIBUTE,
   removeBridgeArtifacts,
+  updateSessionMenuItem,
   type SessionsForCapture,
 } from '../src/client/dom-bridge.js'
 
@@ -19,12 +22,12 @@ function makeSessions(current = 'current'): SessionsForCapture & { open: ReturnT
   }
 }
 
-function makeSessionMenu(): HTMLElement {
+function makeSessionMenu(labels = ['Rename', 'Fork', 'Archive']): HTMLElement {
   const menu = document.createElement('div')
   menu.setAttribute('role', 'menu')
   const viewport = document.createElement('div')
   viewport.setAttribute('role', 'presentation')
-  for (const label of ['Rename', 'Fork', 'Archive']) {
+  for (const label of labels) {
     const wrap = document.createElement('div')
     wrap.className = 'native-wrap'
     const button = document.createElement('button')
@@ -61,11 +64,12 @@ describe('Session action discovery', () => {
     expect(findSessionActionTarget(document.querySelector('#workspace'))).toBeNull()
   })
 
-  it('reads the selected Session directly from the official snapshot', () => {
+  it('captures a selected row from its native callback even if the snapshot is stale', () => {
     const row = document.createElement('div')
     row.setAttribute('aria-selected', 'true')
-    const sessions = makeSessions('selected-id')
-    expect(captureSessionId(row, sessions)).toBe('selected-id')
+    const sessions = makeSessions('different-current-id')
+    row.addEventListener('click', () => { sessions.open('selected-row-id') })
+    expect(captureSessionId(row, sessions)).toBe('selected-row-id')
     expect(sessions.open).not.toHaveBeenCalled()
   })
 
@@ -111,21 +115,82 @@ describe('Portal hosts', () => {
     expect(ensurePinnedHost(document)).toBe(host)
   })
 
-  it('adds one native-styled pin row before the archive item', () => {
+  it('adds one unmanaged native-styled pin row and repositions the menu', () => {
     const menu = makeSessionMenu()
+    const resize = vi.fn()
+    window.addEventListener('resize', resize)
     expect(findUnclaimedPortalMenu(document)).toBe(menu)
     const target = attachSessionMenuHost(menu, 'session-1')
-    expect(target).toMatchObject({
-      menu,
-      sessionId: 'session-1',
-      buttonClassName: 'native-button',
-      iconClassName: 'native-icon',
-      labelClassName: 'native-label',
-    })
+    expect(target).toMatchObject({ menu, sessionId: 'session-1' })
     expect(menu.getAttribute(MENU_OWNER_ATTRIBUTE)).toBe('session-1')
     expect(target?.host.hasAttribute(MENU_HOST_ATTRIBUTE)).toBe(true)
+    expect(target?.button.classList.contains('native-button')).toBe(true)
+    expect(target?.button.classList.contains('dsh-pins-menu-button')).toBe(true)
     expect(target?.host.nextElementSibling?.textContent).toBe('Archive')
+    expect(resize).toHaveBeenCalledOnce()
+
+    if (target !== null) updateSessionMenuItem(target, false, 'Pin session')
+    expect(target?.button.getAttribute('aria-label')).toBe('Pin session')
+    expect(target?.label.textContent).toBe('Pin session')
+    expect(target?.icon.querySelector('svg.lucide-pin')).not.toBeNull()
     expect(attachSessionMenuHost(menu, 'session-1')).toBeNull()
+    window.removeEventListener('resize', resize)
+  })
+
+  it('claims only a newly created menu and rejects non-Session menu structure', () => {
+    const oldMenu = makeSessionMenu()
+    const beforeClick = new Set(listPortalMenus(document))
+    expect(findUnclaimedPortalMenu(document, beforeClick)).toBeNull()
+
+    const viewOptions = makeSessionMenu(['Newest first', 'Oldest first', 'Expanded', 'Compact'])
+    expect(findUnclaimedPortalMenu(document, beforeClick)).toBe(viewOptions)
+    expect(attachSessionMenuHost(viewOptions, 'stale-session')).toBeNull()
+
+    const sessionMenu = makeSessionMenu()
+    expect(findUnclaimedPortalMenu(document, new Set([...beforeClick, viewOptions]))).toBe(sessionMenu)
+    expect(oldMenu.isConnected).toBe(true)
+  })
+
+  it('rejects a new menu that is not positioned by the triggering Session action', () => {
+    const menu = makeSessionMenu()
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
+      top: 400,
+      right: 500,
+      bottom: 560,
+      left: 280,
+      width: 220,
+      height: 160,
+      x: 280,
+      y: 400,
+      toJSON: () => ({}),
+    })
+    expect(findUnclaimedPortalMenu(document, new Set(), {
+      top: 100,
+      right: 260,
+      bottom: 116,
+      left: 244,
+      width: 16,
+      height: 16,
+    })).toBeNull()
+  })
+
+  it('hands focus to the next pin or the selected native row after unpin', () => {
+    document.body.innerHTML = `
+      <div data-slot="sidebar.workspaces">
+        <div role="treeitem" aria-selected="true" id="native"></div>
+        <div data-dsh-pinned-sessions-host>
+          <button class="dsh-pins-open" id="first"></button>
+          <button class="dsh-pins-open" id="second"></button>
+        </div>
+      </div>`
+    const host = document.querySelector<HTMLElement>(`[${PINNED_HOST_ATTRIBUTE}]`)
+    expect(focusAfterPinnedRemoval(document, host, 1)).toBe(true)
+    expect(document.activeElement?.id).toBe('second')
+    host?.replaceChildren()
+    expect(focusAfterPinnedRemoval(document, host, 0)).toBe(true)
+    const native = document.querySelector<HTMLElement>('#native')
+    expect(document.activeElement).toBe(native)
+    expect(native?.getAttribute('tabindex')).toBe('-1')
   })
 
   it('removes every plugin-owned bridge artifact on disposal', () => {

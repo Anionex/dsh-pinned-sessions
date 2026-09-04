@@ -56,6 +56,6 @@ interface BridgeProps {
 export declare const inject: string[];
 /** Register the lifecycle bridge in the additive frame overlay slot. */
 export declare function apply(ctx: ClientContextLike): void;
-/** Keep native sidebar behavior intact while portalling the two added surfaces. */
+/** Keep native behavior intact while mounting the sidebar portal and unmanaged menu item. */
 export declare function PinnedSessionsBridge({ store, sessions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode;
 export {};
