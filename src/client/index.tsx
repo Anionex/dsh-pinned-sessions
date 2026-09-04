@@ -636,17 +636,12 @@ function PinnedSessionRow({ actions, cancelRemoval, current, index, open, prepar
 
   useLayoutEffect(() => {
     if (!menuOpen) return
-    const menu = [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
-      .find(candidate => !menusBeforeOpen.current.has(candidate))
-    if (menu === undefined) return
-    const items = (): HTMLButtonElement[] => [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
-    const edge = focusMenuEdge.current
-    focusMenuEdge.current = null
-    if (edge !== null) {
-      const available = items()
-      const target = edge === 'first' ? available[0] : available.at(-1)
-      target?.focus({ preventScroll: true })
-    }
+    let menu: HTMLElement | undefined
+    let observer: MutationObserver | undefined
+    let disposed = false
+    const items = (): HTMLButtonElement[] => menu === undefined
+      ? []
+      : [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
     const onMenuKeyDown = (event: KeyboardEvent): void => {
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
       const available = items()
@@ -663,10 +658,33 @@ function PinnedSessionRow({ actions, cancelRemoval, current, index, open, prepar
     const onDocumentKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') restoreTriggerFocus()
     }
-    menu.addEventListener('keydown', onMenuKeyDown)
+    const install = (): void => {
+      if (disposed) return
+      menu = [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
+        .find(candidate => !menusBeforeOpen.current.has(candidate))
+      if (menu === undefined) return
+      observer?.disconnect()
+      menu.addEventListener('keydown', onMenuKeyDown)
+      const edge = focusMenuEdge.current
+      focusMenuEdge.current = null
+      if (edge === null) return
+      const available = items()
+      const target = edge === 'first' ? available[0] : available.at(-1)
+      queueMicrotask(() => {
+        if (!disposed && target?.isConnected === true) target.focus({ preventScroll: true })
+      })
+    }
     document.addEventListener('keydown', onDocumentKeyDown, true)
+    install()
+    if (menu === undefined) {
+      observer = new MutationObserver(install)
+      observer.observe(document.body, { childList: true, subtree: true })
+      install()
+    }
     return () => {
-      menu.removeEventListener('keydown', onMenuKeyDown)
+      disposed = true
+      observer?.disconnect()
+      menu?.removeEventListener('keydown', onMenuKeyDown)
       document.removeEventListener('keydown', onDocumentKeyDown, true)
     }
   }, [menuOpen])
