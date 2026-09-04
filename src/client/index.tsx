@@ -16,6 +16,7 @@ import {
   IconTrashOutline16,
   Menu,
   Modal,
+  Toast,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Pin, PinOff } from 'lucide-react'
@@ -106,19 +107,42 @@ interface DeleteSessionServiceLike {
   deleteSession(sessionId: string): Promise<ResultLike>
 }
 
+interface BooleanStoreLike {
+  readonly getSnapshot: () => boolean
+  readonly subscribe: (listener: () => void) => () => void
+}
+
+class BooleanStore implements BooleanStoreLike {
+  private value = false
+  private readonly listeners = new Set<() => void>()
+
+  readonly getSnapshot = (): boolean => this.value
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  set(value: boolean): void {
+    if (value === this.value) return
+    this.value = value
+    for (const listener of this.listeners) listener()
+  }
+}
+
 interface ClientContextLike {
   readonly slots: SlotsLike
   readonly sessions: ClientSessionsLike
   readonly locale: LocaleLike
   get(name: string): unknown
+  inject(dependencies: readonly string[], setup: (ctx: ClientContextLike) => void): unknown
   effect(setup: () => (() => void), label?: string): unknown
 }
 
 export interface PinnedSessionActions {
   readonly renameSession: (sessionId: string, title: string) => Promise<void>
-  readonly forkSession: (sessionId: string) => void
+  readonly forkSession: (sessionId: string) => Promise<void>
   readonly archiveSession: (sessionId: string) => Promise<void>
-  readonly canDeleteSession: () => boolean
+  readonly deleteAvailability: BooleanStoreLike
   readonly deleteSession: (sessionId: string) => Promise<void>
 }
 
@@ -147,6 +171,11 @@ interface ActiveMenuBinding {
   readonly onClick: (event: MouseEvent) => void
 }
 
+interface PendingFocusRemoval {
+  readonly sessionId: string
+  readonly index: number
+}
+
 const NS = 'pinnedSessions'
 const STYLE_ID = '@anionex/dsh-pinned-sessions'
 const MENU_ASSOCIATION_MS = 2_000
@@ -161,6 +190,8 @@ const zh = {
   'section.label': '置顶会话',
   'session.open': '打开置顶会话“{name}”',
   'session.actions': '置顶会话“{name}”的操作',
+  'session.archiveFailed': '归档会话失败：{detail}',
+  'session.forkFailed': '分叉会话失败：{detail}',
   'session.unpin': '取消置顶“{name}”',
   'dialog.close': '关闭',
   'dialog.cancel': '取消',
@@ -183,6 +214,8 @@ const en = {
   'section.label': 'Pinned sessions',
   'session.open': 'Open pinned session “{name}”',
   'session.actions': 'Actions for pinned session “{name}”',
+  'session.archiveFailed': 'Could not archive session: {detail}',
+  'session.forkFailed': 'Could not fork session: {detail}',
   'session.unpin': 'Unpin “{name}”',
   'dialog.close': 'Close',
   'dialog.cancel': 'Cancel',
@@ -232,7 +265,7 @@ function deleteSessionService(ctx: ClientContextLike): DeleteSessionServiceLike 
   }
 }
 
-function makePinnedSessionActions(ctx: ClientContextLike): PinnedSessionActions {
+function makePinnedSessionActions(ctx: ClientContextLike, deleteAvailability: BooleanStoreLike): PinnedSessionActions {
   const workspaces = ctx.get('workspaces') as WorkspacesServiceLike
   return {
     renameSession: async (sessionId, title) => {
@@ -241,13 +274,12 @@ function makePinnedSessionActions(ctx: ClientContextLike): PinnedSessionActions 
       const result = await session.rename(title)
       if (!result.ok) throw new Error(result.error?.message ?? 'Session rename failed')
     },
-    forkSession: sessionId => {
-      void ctx.sessions.fork({ sessionId, increaseTitle: true }).then(childId => {
-        ctx.sessions.open(childId)
-      }).catch(() => {})
+    forkSession: async sessionId => {
+      const childId = await ctx.sessions.fork({ sessionId, increaseTitle: true })
+      ctx.sessions.open(childId)
     },
     archiveSession: async sessionId => { await workspaces.archiveSession(sessionId) },
-    canDeleteSession: () => deleteSessionService(ctx) !== null,
+    deleteAvailability,
     deleteSession: async sessionId => {
       const service = deleteSessionService(ctx)
       if (service === null) throw new Error('Session deletion is unavailable')
@@ -266,7 +298,14 @@ export function apply(ctx: ClientContextLike): void {
     storage = undefined
   }
   const store = new PinStore(storage)
-  const actions = makePinnedSessionActions(ctx)
+  const deleteAvailability = new BooleanStore()
+  const actions = makePinnedSessionActions(ctx, deleteAvailability)
+
+  ctx.inject(['remote.workspaceRegistry'], serviceCtx => {
+    const available = deleteSessionService(serviceCtx) !== null
+    deleteAvailability.set(available)
+    serviceCtx.effect(() => () => { deleteAvailability.set(false) }, 'pinned-sessions: delete capability')
+  })
 
   ctx.effect(() => {
     const onStorage = (event: StorageEvent): void => {
@@ -306,7 +345,7 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
   const [sidebarWide, setSidebarWide] = useState(true)
   const pending = useRef<PendingMenuRequest | null>(null)
   const activeMenu = useRef<ActiveMenuBinding | null>(null)
-  const focusAfterUnpin = useRef<number | null>(null)
+  const focusAfterRemoval = useRef<PendingFocusRemoval | null>(null)
 
   useLayoutEffect(() => {
     let active = true
@@ -474,21 +513,27 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
   }, [pins, sessionSnapshot.byId, t, workspaceSnapshot.items])
 
   useLayoutEffect(() => {
-    const removedIndex = focusAfterUnpin.current
-    if (removedIndex === null) return
-    focusAfterUnpin.current = null
-    focusAfterPinnedRemoval(document, sidebarHost, removedIndex)
+    const pendingRemoval = focusAfterRemoval.current
+    if (pendingRemoval === null || rows.some(row => row.session.id === pendingRemoval.sessionId)) return
+    focusAfterRemoval.current = null
+    focusAfterPinnedRemoval(document, sidebarHost, pendingRemoval.index)
   }, [rows, sidebarHost])
 
   return sidebarHost !== null && sidebarHost.isConnected && sidebarWide && rows.length > 0
     ? createPortal(
         <PinnedSessionSection
           actions={actions}
+          cancelRemoval={sessionId => {
+            if (focusAfterRemoval.current?.sessionId === sessionId) focusAfterRemoval.current = null
+          }}
           currentId={sessionSnapshot.current}
           rows={rows}
           open={sessionId => { sessions.open(sessionId) }}
+          prepareRemoval={(sessionId, index) => {
+            focusAfterRemoval.current = { sessionId, index }
+          }}
           unpin={(sessionId, index) => {
-            focusAfterUnpin.current = index
+            focusAfterRemoval.current = { sessionId, index }
             store.toggle(sessionId)
           }}
           t={t}
@@ -500,14 +545,16 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
 
 interface PinnedSessionSectionProps {
   readonly actions: PinnedSessionActions
+  readonly cancelRemoval: (sessionId: string) => void
   readonly currentId?: string | undefined
   readonly rows: readonly { readonly session: SessionSummaryLike; readonly title: string; readonly workspace: string }[]
   readonly open: (sessionId: string) => void
+  readonly prepareRemoval: (sessionId: string, index: number) => void
   readonly unpin: (sessionId: string, index: number) => void
   readonly t: Translate
 }
 
-function PinnedSessionSection({ actions, currentId, rows, open, unpin, t }: PinnedSessionSectionProps): ReactNode {
+function PinnedSessionSection({ actions, cancelRemoval, currentId, rows, open, prepareRemoval, unpin, t }: PinnedSessionSectionProps): ReactNode {
   return <section className="dsh-pins-section" aria-label={t('section.label')}>
     <div className="dsh-pins-header">
       <PinIcon size={13} />
@@ -516,10 +563,12 @@ function PinnedSessionSection({ actions, currentId, rows, open, unpin, t }: Pinn
     <ul className="dsh-pins-list">
       {rows.map(({ session, title, workspace }, index) => <PinnedSessionRow
         actions={actions}
+        cancelRemoval={cancelRemoval}
         current={session.id === currentId}
         index={index}
         key={session.id}
         open={open}
+        prepareRemoval={prepareRemoval}
         session={session}
         t={t}
         title={title}
@@ -532,9 +581,11 @@ function PinnedSessionSection({ actions, currentId, rows, open, unpin, t }: Pinn
 
 interface PinnedSessionRowProps {
   readonly actions: PinnedSessionActions
+  readonly cancelRemoval: (sessionId: string) => void
   readonly current: boolean
   readonly index: number
   readonly open: (sessionId: string) => void
+  readonly prepareRemoval: (sessionId: string, index: number) => void
   readonly session: SessionSummaryLike
   readonly t: Translate
   readonly title: string
@@ -542,7 +593,7 @@ interface PinnedSessionRowProps {
   readonly workspace: string
 }
 
-function PinnedSessionRow({ actions, current, index, open, session, t, title, unpin, workspace }: PinnedSessionRowProps): ReactNode {
+function PinnedSessionRow({ actions, cancelRemoval, current, index, open, prepareRemoval, session, t, title, unpin, workspace }: PinnedSessionRowProps): ReactNode {
   const [menuOpen, setMenuOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameDraft, setRenameDraft] = useState('')
@@ -551,11 +602,75 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [actionToast, setActionToast] = useState<{ readonly text: string; readonly seq: number } | null>(null)
+  const toastSeq = useRef(0)
   const composing = useRef(false)
+  const trigger = useRef<HTMLButtonElement | null>(null)
+  const menusBeforeOpen = useRef<ReadonlySet<HTMLElement>>(new Set())
+  const focusMenuEdge = useRef<'first' | 'last' | null>(null)
   const actionLabel = t('session.actions', { name: title })
   const renameTrimmed = renameDraft.trim()
   const renameBlocked = renaming || renameTrimmed === ''
-  const canDelete = actions.canDeleteSession()
+  const canDelete = useSyncExternalStore(
+    actions.deleteAvailability.subscribe,
+    actions.deleteAvailability.getSnapshot,
+    actions.deleteAvailability.getSnapshot,
+  )
+  const showDesktopActionError = (key: string, reason: unknown): void => {
+    if (!canDelete) return
+    toastSeq.current += 1
+    setActionToast({
+      text: t(key, { detail: reason instanceof Error ? reason.message : String(reason) }),
+      seq: toastSeq.current,
+    })
+  }
+
+  const restoreTriggerFocus = (): void => {
+    queueMicrotask(() => { trigger.current?.focus({ preventScroll: true }) })
+  }
+  const openActionMenu = (focusEdge: 'first' | 'last' | null): void => {
+    menusBeforeOpen.current = new Set(document.querySelectorAll<HTMLElement>('[role="menu"]'))
+    focusMenuEdge.current = focusEdge
+    setMenuOpen(true)
+  }
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return
+    const menu = [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
+      .find(candidate => !menusBeforeOpen.current.has(candidate))
+    if (menu === undefined) return
+    const items = (): HTMLButtonElement[] => [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
+    const edge = focusMenuEdge.current
+    focusMenuEdge.current = null
+    if (edge !== null) {
+      const available = items()
+      const target = edge === 'first' ? available[0] : available.at(-1)
+      target?.focus({ preventScroll: true })
+    }
+    const onMenuKeyDown = (event: KeyboardEvent): void => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      const available = items()
+      if (available.length === 0) return
+      const currentIndex = available.indexOf(document.activeElement as HTMLButtonElement)
+      let nextIndex: number
+      if (event.key === 'Home') nextIndex = 0
+      else if (event.key === 'End') nextIndex = available.length - 1
+      else if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % available.length
+      else nextIndex = currentIndex <= 0 ? available.length - 1 : currentIndex - 1
+      event.preventDefault()
+      available[nextIndex]?.focus({ preventScroll: true })
+    }
+    const onDocumentKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') restoreTriggerFocus()
+    }
+    menu.addEventListener('keydown', onMenuKeyDown)
+    document.addEventListener('keydown', onDocumentKeyDown, true)
+    return () => {
+      menu.removeEventListener('keydown', onMenuKeyDown)
+      document.removeEventListener('keydown', onDocumentKeyDown, true)
+    }
+  }, [menuOpen])
+
   const menuItems: MenuEntry[] = [
     { id: 'rename', label: t('menu.rename'), icon: <IconEditOutline16 /> },
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
@@ -568,6 +683,7 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
     if (renaming) return
     setRenameOpen(false)
     setRenameError(null)
+    restoreTriggerFocus()
   }
   const confirmRename = (): void => {
     if (renameBlocked) return
@@ -576,6 +692,7 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
     void actions.renameSession(session.id, renameTrimmed).then(() => {
       setRenaming(false)
       setRenameOpen(false)
+      restoreTriggerFocus()
     }).catch(reason => {
       setRenaming(false)
       setRenameError(reason instanceof Error ? reason.message : String(reason))
@@ -585,15 +702,19 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
     if (deleting) return
     setDeleteOpen(false)
     setDeleteError(null)
+    restoreTriggerFocus()
   }
   const confirmDelete = (): void => {
     if (deleting) return
+    prepareRemoval(session.id, index)
     setDeleting(true)
     setDeleteError(null)
     void actions.deleteSession(session.id).then(() => {
       setDeleting(false)
       setDeleteOpen(false)
+      restoreTriggerFocus()
     }).catch(reason => {
+      cancelRemoval(session.id)
       setDeleting(false)
       setDeleteError(reason instanceof Error ? reason.message : String(reason))
     })
@@ -605,11 +726,21 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
       setRenameError(null)
       setRenameOpen(true)
     }
-    if (id === 'fork') actions.forkSession(session.id)
+    if (id === 'fork') {
+      restoreTriggerFocus()
+      void actions.forkSession(session.id).catch(reason => {
+        showDesktopActionError('session.forkFailed', reason)
+      })
+    }
     if (id === 'unpin') unpin(session.id, index)
     if (id === 'archive') {
+      prepareRemoval(session.id, index)
+      restoreTriggerFocus()
       void actions.archiveSession(session.id).catch(reason => {
-        console.warn('session archive rejected:', reason)
+        cancelRemoval(session.id)
+        restoreTriggerFocus()
+        showDesktopActionError('session.archiveFailed', reason)
+        if (!canDelete) console.warn('session archive rejected:', reason)
       })
     }
     if (id === 'delete' && canDelete) {
@@ -644,6 +775,7 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
         portal
         closeOnPointerLeave
         anchor={<button
+          ref={trigger}
           type="button"
           className="dsh-pins-actions"
           aria-expanded={menuOpen}
@@ -652,12 +784,13 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
           title={actionLabel}
           onClick={event => {
             event.stopPropagation()
-            setMenuOpen(value => !value)
+            if (menuOpen) setMenuOpen(false)
+            else openActionMenu(null)
           }}
           onKeyDown={event => {
-            if (event.key !== 'ArrowDown') return
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
             event.preventDefault()
-            setMenuOpen(true)
+            openActionMenu(event.key === 'ArrowDown' ? 'first' : 'last')
           }}
         >
           <IconEllipsisOutline16 />
@@ -702,13 +835,18 @@ function PinnedSessionRow({ actions, current, index, open, session, t, title, un
       title={t('delete.title')}
       description={t('delete.description', { name: title })}
       footer={<>
-        <Button variant="outline" disabled={deleting} onClick={closeDelete}>{t('dialog.cancel')}</Button>
+        <Button variant="outline" autoFocus disabled={deleting} onClick={closeDelete}>{t('dialog.cancel')}</Button>
         <Button variant="outline" className="dsh-pins-delete-action" disabled={deleting} onClick={confirmDelete}>{t('delete.title')}</Button>
       </>}
     >
       {deleting && <div className="dsh-pins-dialog-status" role="status">{t('delete.pending')}</div>}
       {deleteError !== null && <div className="dsh-pins-dialog-error" role="alert">{deleteError}</div>}
     </Modal>
+    {actionToast !== null && <Toast
+      key={actionToast.seq}
+      text={actionToast.text}
+      onDone={() => { setActionToast(null) }}
+    />}
   </>
 }
 

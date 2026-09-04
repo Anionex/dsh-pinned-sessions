@@ -31,6 +31,13 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     readonly footer?: ReactNode
   }): ReactNode
 
+  export function Toast(props: {
+    readonly text: string
+    readonly icon?: ReactNode
+    readonly anchor?: HTMLElement | null
+    readonly onDone: () => void
+  }): ReactNode
+
   export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & {
     readonly variant?: 'primary' | 'ghost' | 'outline' | 'toolbar'
   }): ReactNode

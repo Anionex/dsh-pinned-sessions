@@ -68,6 +68,8 @@ function makeBridgeProps(store: PinStore, deleteAvailable = true) {
     'session.unpin': 'Unpin “{name}”',
     'dialog.close': 'Close',
     'dialog.cancel': 'Cancel',
+    'session.archiveFailed': 'Could not archive session: {detail}',
+    'session.forkFailed': 'Could not fork session: {detail}',
     'rename.title': 'Rename session',
     'rename.field': 'Session name',
     'rename.confirm': 'Rename',
@@ -79,14 +81,29 @@ function makeBridgeProps(store: PinStore, deleteAvailable = true) {
   const useWorkspaces = <S,>(selector: (snapshot: typeof workspaceSnapshot) => S): S => selector(workspaceSnapshot)
   const t = (key: string, params?: Readonly<Record<string, unknown>>): string => (labels[key] ?? key)
     .replace('{name}', String(params?.name ?? ''))
+    .replace('{detail}', String(params?.detail ?? ''))
+  let deleteCapability = deleteAvailable
+  const deleteListeners = new Set<() => void>()
+  const deleteAvailability = {
+    getSnapshot: (): boolean => deleteCapability,
+    subscribe: (listener: () => void): (() => void) => {
+      deleteListeners.add(listener)
+      return () => { deleteListeners.delete(listener) }
+    },
+  }
+  const setDeleteAvailable = (value: boolean): void => {
+    if (deleteCapability === value) return
+    deleteCapability = value
+    for (const listener of deleteListeners) listener()
+  }
   const actions = {
     renameSession: vi.fn<(sessionId: string, title: string) => Promise<void>>().mockResolvedValue(undefined),
-    forkSession: vi.fn<(sessionId: string) => void>(),
+    forkSession: vi.fn<(sessionId: string) => Promise<void>>().mockResolvedValue(undefined),
     archiveSession: vi.fn<(sessionId: string) => Promise<void>>().mockResolvedValue(undefined),
-    canDeleteSession: vi.fn(() => deleteAvailable),
+    deleteAvailability,
     deleteSession: vi.fn<(sessionId: string) => Promise<void>>().mockResolvedValue(undefined),
   }
-  return { store, sessions, actions, useSessions, useWorkspaces, t }
+  return { store, sessions, actions, setDeleteAvailable, useSessions, useWorkspaces, t }
 }
 
 beforeEach(() => {
@@ -202,6 +219,21 @@ describe('PinnedSessionsBridge menu association', () => {
       await Promise.resolve()
     })
     expect(document.querySelector('[role="menu"]')).not.toBeNull()
+    expect(document.activeElement?.textContent).toBe('Rename')
+    const pressMenuKey = async (key: string): Promise<void> => {
+      await act(async () => {
+        document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+        await Promise.resolve()
+      })
+    }
+    await pressMenuKey('ArrowUp')
+    expect(document.activeElement?.textContent).toBe('Archive session')
+    await pressMenuKey('Home')
+    expect(document.activeElement?.textContent).toBe('Rename')
+    await pressMenuKey('End')
+    expect(document.activeElement?.textContent).toBe('Archive session')
+    await pressMenuKey('ArrowDown')
+    expect(document.activeElement?.textContent).toBe('Rename')
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await Promise.resolve()
@@ -251,25 +283,143 @@ describe('PinnedSessionsBridge menu association', () => {
 
     await selectMenuItem('Rename')
     const renameDialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    const renameInput = renameDialog?.querySelector<HTMLInputElement>('[aria-label="Session name"]') ?? null
+    expect(document.activeElement).toBe(renameInput)
     const renameConfirm = [...renameDialog?.querySelectorAll<HTMLButtonElement>('button') ?? []]
       .find(button => button.textContent === 'Rename')
     if (renameConfirm === undefined) throw new Error('rename confirmation missing')
     await clickAndFlush(renameConfirm)
     expect(props.actions.renameSession).toHaveBeenCalledWith('session-a', 'Session A')
+    expect(document.activeElement).toBe(trigger)
 
     await selectMenuItem('Fork session')
     expect(props.actions.forkSession).toHaveBeenCalledWith('session-a')
+    expect(document.activeElement).toBe(trigger)
 
     await selectMenuItem('Archive session')
     expect(props.actions.archiveSession).toHaveBeenCalledWith('session-a')
+    expect(document.activeElement).toBe(trigger)
 
     await selectMenuItem('Delete session')
     const deleteDialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    expect(document.activeElement?.textContent).toBe('Cancel')
     const deleteConfirm = [...deleteDialog?.querySelectorAll<HTMLButtonElement>('button') ?? []]
       .find(button => button.textContent === 'Delete session')
     if (deleteConfirm === undefined) throw new Error('delete confirmation missing')
     await clickAndFlush(deleteConfirm)
     expect(props.actions.deleteSession).toHaveBeenCalledWith('session-a')
+    expect(document.activeElement).toBe(trigger)
+
+    await act(async () => { root.unmount() })
+  })
+
+  it('reacts when the optional Desktop delete service activates or unloads', async () => {
+    const store = new PinStore(undefined)
+    store.toggle('session-a')
+    const props = makeBridgeProps(store, false)
+    const overlay = document.querySelector<HTMLElement>('#overlay-root')
+    const sidebarRoot = document.querySelector<HTMLElement>('#sidebar-root')
+    if (overlay === null || sidebarRoot === null) throw new Error('test DOM missing')
+    vi.spyOn(sidebarRoot, 'getBoundingClientRect').mockReturnValue({ width: 260 } as DOMRect)
+
+    const root = createRoot(overlay)
+    await act(async () => { root.render(createElement(PinnedSessionsBridge, props)) })
+    const trigger = document.querySelector<HTMLButtonElement>('.dsh-pins-actions')
+    if (trigger === null) throw new Error('pinned actions missing')
+    const labels = (): Array<string | null> => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .map(item => item.textContent)
+
+    await clickAndFlush(trigger)
+    expect(labels()).not.toContain('Delete session')
+    await clickAndFlush(trigger)
+
+    await act(async () => { props.setDeleteAvailable(true) })
+    await clickAndFlush(trigger)
+    expect(labels()).toContain('Delete session')
+    await clickAndFlush(trigger)
+
+    await act(async () => { props.setDeleteAvailable(false) })
+    await clickAndFlush(trigger)
+    expect(labels()).not.toContain('Delete session')
+
+    await act(async () => { root.unmount() })
+  })
+
+  it('matches Desktop failure feedback for fork and archive actions', async () => {
+    const store = new PinStore(undefined)
+    store.toggle('session-a')
+    const props = makeBridgeProps(store, true)
+    props.actions.forkSession.mockRejectedValueOnce(new Error('fork broke'))
+    props.actions.archiveSession.mockRejectedValueOnce(new Error('archive broke'))
+    const overlay = document.querySelector<HTMLElement>('#overlay-root')
+    const sidebarRoot = document.querySelector<HTMLElement>('#sidebar-root')
+    if (overlay === null || sidebarRoot === null) throw new Error('test DOM missing')
+    vi.spyOn(sidebarRoot, 'getBoundingClientRect').mockReturnValue({ width: 260 } as DOMRect)
+
+    const root = createRoot(overlay)
+    await act(async () => { root.render(createElement(PinnedSessionsBridge, props)) })
+    const trigger = document.querySelector<HTMLButtonElement>('.dsh-pins-actions')
+    if (trigger === null) throw new Error('pinned actions missing')
+    const selectMenuItem = async (label: string): Promise<void> => {
+      await clickAndFlush(trigger)
+      const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find(candidate => candidate.textContent === label)
+      if (item === undefined) throw new Error(`${label} action missing`)
+      await clickAndFlush(item)
+    }
+
+    await selectMenuItem('Fork session')
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Could not fork session: fork broke')
+    await selectMenuItem('Archive session')
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Could not archive session: archive broke')
+    expect(document.activeElement).toBe(trigger)
+
+    await act(async () => { root.unmount() })
+  })
+
+  it.each(['Archive session', 'Delete session'])('hands focus off after %s removes a pinned row', async label => {
+    const store = new PinStore(undefined)
+    store.toggle('session-a')
+    const props = makeBridgeProps(store, true)
+    const overlay = document.querySelector<HTMLElement>('#overlay-root')
+    const sidebarRoot = document.querySelector<HTMLElement>('#sidebar-root')
+    const nativeRow = document.querySelector<HTMLElement>('#session-row')
+    if (overlay === null || sidebarRoot === null || nativeRow === null) throw new Error('test DOM missing')
+    vi.spyOn(sidebarRoot, 'getBoundingClientRect').mockReturnValue({ width: 260 } as DOMRect)
+
+    const root = createRoot(overlay)
+    await act(async () => { root.render(createElement(PinnedSessionsBridge, props)) })
+    const trigger = document.querySelector<HTMLButtonElement>('.dsh-pins-actions')
+    if (trigger === null) throw new Error('pinned actions missing')
+    await clickAndFlush(trigger)
+    const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find(candidate => candidate.textContent === label)
+    if (item === undefined) throw new Error(`${label} action missing`)
+    await clickAndFlush(item)
+    if (label === 'Delete session') {
+      const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+        .find(button => button.textContent === 'Delete session')
+      if (confirm === undefined) throw new Error('delete confirmation missing')
+      await clickAndFlush(confirm)
+    }
+
+    const removedSessionSnapshot = { ids: [], byId: {}, current: 'session-a', phase: 'ready' }
+    const removedWorkspaceSnapshot = {
+      items: [{ workspaceId: 'workspace-a', title: 'Workspace A', sessionIds: [] }],
+      archivedSessionIds: label === 'Archive session' ? ['session-a'] : [],
+      phase: 'ready',
+    }
+    const removedProps = {
+      ...props,
+      useSessions: <S,>(selector: (snapshot: typeof removedSessionSnapshot) => S): S => selector(removedSessionSnapshot),
+      useWorkspaces: <S,>(selector: (snapshot: typeof removedWorkspaceSnapshot) => S): S => selector(removedWorkspaceSnapshot),
+    }
+    await act(async () => {
+      root.render(createElement(PinnedSessionsBridge, removedProps))
+      await Promise.resolve()
+    })
+    expect(document.querySelector('.dsh-pins-section')).toBeNull()
+    expect(document.activeElement).toBe(nativeRow)
 
     await act(async () => { root.unmount() })
   })

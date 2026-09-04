@@ -92,6 +92,10 @@ export function Modal({
   )
 }
 
+export function Toast({ text }: { readonly text: string; readonly onDone: () => void }): ReactNode {
+  return createPortal(<div role="status">{text}</div>, document.body)
+}
+
 export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { readonly variant?: string }): ReactNode {
   const { variant: _variant, ...buttonProps } = props
   return <button type="button" {...buttonProps} />

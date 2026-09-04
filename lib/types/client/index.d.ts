@@ -57,18 +57,23 @@ interface ClientSessionsLike extends SessionsForCapture {
         readonly increaseTitle: boolean;
     }): Promise<string>;
 }
+interface BooleanStoreLike {
+    readonly getSnapshot: () => boolean;
+    readonly subscribe: (listener: () => void) => () => void;
+}
 interface ClientContextLike {
     readonly slots: SlotsLike;
     readonly sessions: ClientSessionsLike;
     readonly locale: LocaleLike;
     get(name: string): unknown;
+    inject(dependencies: readonly string[], setup: (ctx: ClientContextLike) => void): unknown;
     effect(setup: () => (() => void), label?: string): unknown;
 }
 export interface PinnedSessionActions {
     readonly renameSession: (sessionId: string, title: string) => Promise<void>;
-    readonly forkSession: (sessionId: string) => void;
+    readonly forkSession: (sessionId: string) => Promise<void>;
     readonly archiveSession: (sessionId: string) => Promise<void>;
-    readonly canDeleteSession: () => boolean;
+    readonly deleteAvailability: BooleanStoreLike;
     readonly deleteSession: (sessionId: string) => Promise<void>;
 }
 interface BridgeProps {
