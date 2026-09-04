@@ -1,0 +1,4 @@
+# Mount the host marker so DSH discovers this bundle's Web client entry.
+- insert:
+    - id: pinned-sessions
+      name: '@anionex/dsh-pinned-sessions'
