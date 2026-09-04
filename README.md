@@ -64,17 +64,12 @@ The package declares the same pre-`0.2.0` DSH client range that it tests. It use
 
 ## How It Works
 
-```mermaid
-flowchart LR
-  A[Native Session menu] -->|exact synchronous ID capture| B[PinStore]
-  B -->|IDs and timestamps| C[(localStorage)]
-  B --> D[Workspace header overlay]
-  D --> E[Pinned Session row]
-  E -->|rename / fork / archive| F[DSH Session and Workspace services]
-  E -->|optional delete| G[Desktop Workspace Registry]
-```
+1. A click in the native Session menu captures that Session's exact ID synchronously.
+2. `PinStore` persists the ID and pin timestamp under `dsh.pinned-sessions.v1` in `localStorage`.
+3. The `shell.overlay` mount observes `[data-slot="sidebar.workspaces"]` and portals a compact list below its header.
+4. Pinned actions call DSH Session and Workspace services; Desktop Delete calls the optional Workspace Registry service.
 
-The plugin mounts through `shell.overlay`, observes `[data-slot="sidebar.workspaces"]`, and portals one compact list into the sidebar. Pin state uses the versioned key `dsh.pinned-sessions.v1`, keeps at most 500 unique IDs, and prunes Sessions that no longer exist or have been archived.
+The store keeps at most 500 unique IDs and prunes Sessions that no longer exist or have been archived.
 
 ## Data and Limitations
 

@@ -64,17 +64,12 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 
 ## 工作原理
 
-```mermaid
-flowchart LR
-  A[原生 Session 菜单] -->|同步捕获准确 ID| B[PinStore]
-  B -->|ID 和置顶时间| C[(localStorage)]
-  B --> D[工作区标题层]
-  D --> E[置顶 Session 行]
-  E -->|重命名 / 分叉 / 归档| F[DSH Session 与 Workspace 服务]
-  E -->|可选删除| G[Desktop Workspace Registry]
-```
+1. 用户点击原生 Session 菜单时，插件同步捕获该 Session 的准确 ID。
+2. `PinStore` 把 ID 和置顶时间写入 `localStorage` 的 `dsh.pinned-sessions.v1`。
+3. `shell.overlay` 挂载点观察 `[data-slot="sidebar.workspaces"]`，并把紧凑列表 portal 到标题下方。
+4. 置顶行通过 DSH Session 和 Workspace 服务执行操作；Desktop 删除使用可选的 Workspace Registry 服务。
 
-插件通过 `shell.overlay` 挂载，观察 `[data-slot="sidebar.workspaces"]`，再把一块紧凑列表 portal 到侧栏。置顶状态使用版本化键 `dsh.pinned-sessions.v1`，最多保留 500 个唯一 ID，并自动清理已不存在或已归档的 Session。
+存储层最多保留 500 个唯一 ID，并自动清理已不存在或已归档的 Session。
 
 ## 数据与限制
 
