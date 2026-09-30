@@ -25,7 +25,7 @@ DeepSeek Harness 会把 Session 保留在原工作区中。会话增多后，返
   <img src="assets/pinned-session-menu.png" alt="工作区侧栏顶部的一条置顶会话，已打开重命名、分叉、取消置顶和归档操作" width="465">
 </p>
 
-悬浮置顶行即可显示三点菜单。Web profile 提供**重命名**、**分叉会话**、**取消置顶**和**归档会话**。Desktop profile 在 Archive Manager 为原生会话提供删除能力时，还会显示**删除会话**。
+悬浮置顶行即可显示三点菜单。Web profile 提供**重命名**、**分叉会话**、**从顶部分组取消置顶**和**归档会话**。Desktop profile 在 Archive Manager 为原生会话提供删除能力时，还会显示**删除会话**。
 
 ## 主要能力
 
@@ -45,7 +45,7 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile web
 dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 ```
 
-刷新 Web 或重启 Desktop。打开任意原生 Session 的三点菜单，选择**置顶会话**。置顶副本会出现在工作区标题下；从任意一侧菜单选择**取消置顶**即可移除。
+刷新 Web 或重启 Desktop。打开任意原生 Session 的三点菜单，选择**置顶到顶部分组**。置顶副本会出现在工作区标题下；从任意一侧菜单选择**从顶部分组取消置顶**即可移除。
 
 ### 环境要求
 
@@ -60,7 +60,7 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 | Web | 重命名、分叉、取消置顶、归档 | 使用 DSH 官方组件和 Session/Workspace 服务 |
 | Desktop | 重命名、分叉、取消置顶、归档、可选删除 | 仅在 Archive Manager 暴露删除能力时显示删除和失败 Toast |
 
-包声明并测试了同一段 `0.2.0` 之前的 DSH 客户端版本范围。DOM 接入依赖稳定的 slot 和 ARIA 标记，不依赖构建生成的 CSS Module 类名。
+保留既有版本范围。候选版 0.1.2 增加 DSH `0.2.0-rc.2` 安装支持，使用其官方会话菜单 slot 和工作区导航服务。插件顶部分组与宿主工作区内置置顶分别保留。发版仍待 Web/Desktop 验收及发布，见 [CHANGELOG](CHANGELOG.md)。旧版宿主继续使用稳定的 slot/ARIA 桥接。
 
 ## 工作原理
 
@@ -77,7 +77,7 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 - 插件只在 `localStorage` 中保存 Session ID 和 `pinnedAt` 时间戳。
 - 置顶行是原生行的快捷副本，不会移动或删除原位置。
 - Desktop 删除能力未加载时，删除菜单项保持隐藏。
-- DSH 客户端 API 仍处于 `0.2.0` 之前；DSH 更改接口后，需要安装与其匹配的插件版本。
+- DSH 客户端 API 会随预发布版本变化；请以包兼容元数据中明确实测的版本结论为准。
 
 ## 开发
 

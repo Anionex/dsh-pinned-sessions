@@ -24,7 +24,7 @@ test('package is a portable, prebuilt DSH Profile Bundle', async () => {
     ],
   })
   assert.deepEqual(pkg.dsh?.compatibility?.profiles, ['web', 'desktop'])
-  assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh-client-ui-primitives'], '>=0.1.0-rc.8 <0.2.0')
+  assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh-client-ui-primitives'], '>=0.1.0-rc.8 <0.2.0 || 0.2.0-rc.2')
   assert.equal(pkg.dshClient, undefined)
   assert.equal(pkg.main, 'lib/index.js')
   assert.equal(pkg.types, 'lib/types/index.d.ts')

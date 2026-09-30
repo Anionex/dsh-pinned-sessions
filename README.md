@@ -25,7 +25,7 @@ DeepSeek Harness keeps Sessions inside their original Workspaces. Once the list 
   <img src="assets/pinned-session-menu.png" alt="A pinned Session at the top of the Workspace sidebar with Rename, Fork, Unpin, and Archive actions open" width="465">
 </p>
 
-Hover a pinned row to reveal its ellipsis menu. The Web profile shows **Rename**, **Fork session**, **Unpin session**, and **Archive session**. The Desktop profile also shows **Delete session** when Archive Manager provides the same action on native rows.
+Hover a pinned row to reveal its ellipsis menu. The Web profile shows **Rename**, **Fork session**, **Unpin from top section**, and **Archive session**. The Desktop profile also shows **Delete session** when Archive Manager provides the same action on native rows.
 
 ## Highlights
 
@@ -45,7 +45,7 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile web
 dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 ```
 
-Refresh Web or restart Desktop. Open any native Session ellipsis menu and choose **Pin session**. The pinned copy appears below the Workspace header; use **Unpin session** from either menu to remove it.
+Refresh Web or restart Desktop. Open any native Session ellipsis menu and choose **Pin to top section**. The pinned copy appears below the Workspace header; use **Unpin from top section** from either menu to remove it.
 
 ### Requirements
 
@@ -60,7 +60,7 @@ Refresh Web or restart Desktop. Open any native Session ellipsis menu and choose
 | Web | Rename, Fork, Unpin, Archive | Official DSH primitives and Session/Workspace services |
 | Desktop | Rename, Fork, Unpin, Archive, optional Delete | Delete and failure Toasts appear only while Archive Manager exposes its Session deletion capability |
 
-The package declares the same pre-`0.2.0` DSH client range that it tests. It uses stable slot and ARIA anchors instead of generated CSS module names.
+Existing release ranges are preserved. Candidate 0.1.2 adds DSH `0.2.0-rc.2` installation support and uses its official session-menu slot and workspace navigation service. The plugin's top section remains separate from native workspace pinning. The release is pending Web/Desktop acceptance and publication; see [CHANGELOG](CHANGELOG.md). Legacy hosts retain the stable slot/ARIA bridge.
 
 ## How It Works
 
@@ -77,7 +77,7 @@ The store keeps at most 500 unique IDs and prunes Sessions that no longer exist 
 - The plugin stores only Session IDs and `pinnedAt` timestamps in `localStorage`.
 - Pinned rows duplicate native rows by design; they do not move or remove the originals.
 - Delete stays hidden unless the Desktop deletion provider is active.
-- DSH client APIs are still pre-`0.2.0`; install a compatible plugin release when DSH changes that contract.
+- DSH client APIs change across prereleases; use the exact tested release verdicts in the package compatibility metadata.
 
 ## Development
 

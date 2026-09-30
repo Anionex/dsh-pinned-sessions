@@ -9,6 +9,7 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   }
 
   export type MenuEntry = MenuItem
+  export function MenuItemButton(props: { icon?: ReactNode; onSelect: () => void; children: ReactNode }): ReactNode
 
   export function Menu(props: {
     readonly open: boolean

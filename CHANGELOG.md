@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 — Unreleased / 待发布
+
+- Use DSH 0.2's official session-menu slot and workspace navigation service. Keep the legacy menu bridge for older hosts, and bundle icons whose old host export names were removed.
+- 使用 DSH 0.2 的官方会话菜单 slot 和工作区导航服务；保留旧版菜单桥接，并打包已被宿主移除旧名称的图标。
+- The plugin's top section remains independent of the new native workspace pin action. Menu labels explicitly name the top section.
+- 插件顶部分组与新版宿主工作区内置置顶分别保留；菜单文字明确指向顶部分组。
+- Candidate targets `0.2.0-rc.2`. Release still requires all real Web/Desktop interaction gates; do not treat package installation alone as compatibility acceptance.
+- 候选版面向 `0.2.0-rc.2`，发版仍须通过真实 Web/Desktop 交互验收，不能仅以安装成功判定兼容。
+
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while its public API remains pre-1.0.
 
 ## [Unreleased]
