@@ -9,17 +9,13 @@ import {
 } from 'react'
 import {
   Button,
-  IconArchiveOutline20,
-  IconBranchOutline16,
-  IconEditOutline16,
-  IconEllipsisOutline16,
-  IconTrashOutline16,
   Menu,
+  MenuItemButton,
   Modal,
   Toast,
   type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Pin, PinOff } from 'lucide-react'
+import { Pin, PinOff, Archive, GitBranch, Pencil, Ellipsis, Trash2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import {
   attachSessionMenuHost,
@@ -139,6 +135,7 @@ interface ClientContextLike {
 }
 
 export interface PinnedSessionActions {
+  readonly openSession?: (sessionId: string) => void
   readonly renameSession: (sessionId: string, title: string) => Promise<void>
   readonly forkSession: (sessionId: string) => Promise<void>
   readonly archiveSession: (sessionId: string) => Promise<void>
@@ -153,6 +150,7 @@ interface BridgeProps {
   readonly useSessions: SelectorHook<SessionsSnapshotLike>
   readonly useWorkspaces: SelectorHook<WorkspacesSnapshotLike>
   readonly t: Translate
+  readonly modernMenus?: BooleanStoreLike
 }
 
 interface PinIconProps {
@@ -183,8 +181,8 @@ const MENU_ASSOCIATION_MS = 2_000
 const zh = {
   'menu.rename': '重命名',
   'menu.fork': '分叉会话',
-  'menu.pin': '置顶会话',
-  'menu.unpin': '取消置顶',
+  'menu.pin': '置顶到顶部分组',
+  'menu.unpin': '从顶部分组取消置顶',
   'menu.archive': '归档会话',
   'menu.delete': '删除会话',
   'section.label': '置顶会话',
@@ -207,8 +205,8 @@ const zh = {
 const en = {
   'menu.rename': 'Rename',
   'menu.fork': 'Fork session',
-  'menu.pin': 'Pin session',
-  'menu.unpin': 'Unpin session',
+  'menu.pin': 'Pin to top section',
+  'menu.unpin': 'Unpin from top section',
   'menu.archive': 'Archive session',
   'menu.delete': 'Delete session',
   'section.label': 'Pinned sessions',
@@ -300,6 +298,27 @@ export function apply(ctx: ClientContextLike): void {
   const store = new PinStore(storage)
   const deleteAvailability = new BooleanStore()
   const actions = makePinnedSessionActions(ctx, deleteAvailability)
+  const modernMenus = new BooleanStore()
+  let openSession = (sessionId: string): void => { ctx.sessions.open(sessionId) }
+  const navigationActions = {
+    ...actions,
+    openSession: (id: string) => { openSession(id) },
+    forkSession: async (id: string) => { openSession(await ctx.sessions.fork({ sessionId: id, increaseTitle: true })) },
+  }
+  ctx.inject(['uiWorkspace'], navigation => {
+    const service = navigation.get('uiWorkspace') as { openSession(id: string): void }
+    openSession = id => { service.openSession(id) }
+    navigation.effect(() => () => { openSession = id => { ctx.sessions.open(id) } })
+  })
+
+  ctx.slots.inject('sidebar.workspaces.session.menu.item', () => {
+    modernMenus.set(true)
+    const dispose = ctx.slots.register({
+      name: 'sidebar.workspaces.session.menu.item', id: 'pinned-sessions', order: 90, locale: NS,
+      inject: () => ({ store }),
+    }, PinTopSectionMenuItem)
+    return () => { dispose(); modernMenus.set(false) }
+  })
 
   ctx.inject(['remote.workspaceRegistry'], serviceCtx => {
     const available = deleteSessionService(serviceCtx) !== null
@@ -332,12 +351,27 @@ export function apply(ctx: ClientContextLike): void {
     id: 'pinned-sessions-bridge',
     order: 40,
     locale: NS,
-    inject: () => ({ store, sessions: ctx.sessions, actions }),
+    inject: () => ({ store, sessions: ctx.sessions, actions: navigationActions, modernMenus }),
   }, PinnedSessionsBridge))
 }
 
+/** The official 0.2 menu slot supplies the exact Session identity. */
+function PinTopSectionMenuItem({ sessionId, store, useMenuOpenState, t }: {
+  sessionId: string
+  store: PinStore
+  useMenuOpenState: () => [boolean, (open: boolean) => void]
+  t: Translate
+}): ReactNode {
+  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  const [, setMenuOpen] = useMenuOpenState()
+  const pinned = store.isPinned(sessionId)
+  return <MenuItemButton icon={<PinIcon />} onSelect={() => { store.toggle(sessionId); setMenuOpen(false) }}>
+    {t(pinned ? 'menu.unpin' : 'menu.pin')}
+  </MenuItemButton>
+}
+
 /** Keep native behavior intact while mounting the sidebar portal and unmanaged menu item. */
-export function PinnedSessionsBridge({ store, sessions, actions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode {
+export function PinnedSessionsBridge({ store, sessions, actions, useSessions, useWorkspaces, t, modernMenus }: BridgeProps): ReactNode {
   const sessionSnapshot = useSessions(snapshot => snapshot)
   const workspaceSnapshot = useWorkspaces(snapshot => snapshot)
   const pins = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
@@ -435,6 +469,7 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
     }
     const onClickCapture = (event: MouseEvent): void => {
       pending.current = null
+      if (modernMenus?.getSnapshot()) return
       const target = findSessionActionTarget(event.target)
       if (target === null) return
       const sessionId = captureSessionId(target.row, sessions)
@@ -475,7 +510,7 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
       disposeActiveMenu()
       removeBridgeArtifacts(document)
     }
-  }, [sessions, store, t])
+  }, [sessions, store, t, modernMenus])
 
   useLayoutEffect(() => {
     if (sidebarHost === null) return
@@ -528,7 +563,7 @@ export function PinnedSessionsBridge({ store, sessions, actions, useSessions, us
           }}
           currentId={sessionSnapshot.current}
           rows={rows}
-          open={sessionId => { sessions.open(sessionId) }}
+          open={sessionId => { if (actions.openSession) actions.openSession(sessionId); else sessions.open(sessionId) }}
           prepareRemoval={(sessionId, index) => {
             focusAfterRemoval.current = { sessionId, index }
           }}
@@ -690,11 +725,11 @@ function PinnedSessionRow({ actions, cancelRemoval, current, index, open, prepar
   }, [menuOpen])
 
   const menuItems: MenuEntry[] = [
-    { id: 'rename', label: t('menu.rename'), icon: <IconEditOutline16 /> },
-    { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
+    { id: 'rename', label: t('menu.rename'), icon: <Pencil size={16} /> },
+    { id: 'fork', label: t('menu.fork'), icon: <GitBranch size={16} /> },
     { id: 'unpin', label: t('menu.unpin'), icon: <PinOff size={16} strokeWidth={1.8} aria-hidden="true" /> },
-    { id: 'archive', label: t('menu.archive'), icon: <IconArchiveOutline20 size={16} /> },
-    ...(canDelete ? [{ id: 'delete', label: t('menu.delete'), icon: <IconTrashOutline16 />, danger: true }] : []),
+    { id: 'archive', label: t('menu.archive'), icon: <Archive size={16} /> },
+    ...(canDelete ? [{ id: 'delete', label: t('menu.delete'), icon: <Trash2 size={16} />, danger: true }] : []),
   ]
 
   const closeRename = (): void => {
@@ -811,7 +846,7 @@ function PinnedSessionRow({ actions, cancelRemoval, current, index, open, prepar
             openActionMenu(event.key === 'ArrowDown' ? 'first' : 'last')
           }}
         >
-          <IconEllipsisOutline16 />
+          <Ellipsis size={16} />
         </button>}
       />
     </li>

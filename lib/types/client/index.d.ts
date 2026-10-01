@@ -70,6 +70,7 @@ interface ClientContextLike {
     effect(setup: () => (() => void), label?: string): unknown;
 }
 export interface PinnedSessionActions {
+    readonly openSession?: (sessionId: string) => void;
     readonly renameSession: (sessionId: string, title: string) => Promise<void>;
     readonly forkSession: (sessionId: string) => Promise<void>;
     readonly archiveSession: (sessionId: string) => Promise<void>;
@@ -83,10 +84,11 @@ interface BridgeProps {
     readonly useSessions: SelectorHook<SessionsSnapshotLike>;
     readonly useWorkspaces: SelectorHook<WorkspacesSnapshotLike>;
     readonly t: Translate;
+    readonly modernMenus?: BooleanStoreLike;
 }
 export declare const inject: string[];
 /** Register the lifecycle bridge in the additive frame overlay slot. */
 export declare function apply(ctx: ClientContextLike): void;
 /** Keep native behavior intact while mounting the sidebar portal and unmanaged menu item. */
-export declare function PinnedSessionsBridge({ store, sessions, actions, useSessions, useWorkspaces, t }: BridgeProps): ReactNode;
+export declare function PinnedSessionsBridge({ store, sessions, actions, useSessions, useWorkspaces, t, modernMenus }: BridgeProps): ReactNode;
 export {};
