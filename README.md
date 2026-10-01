@@ -60,7 +60,7 @@ Refresh Web or restart Desktop. Open any native Session ellipsis menu and choose
 | Web | Rename, Fork, Unpin, Archive | Official DSH primitives and Session/Workspace services |
 | Desktop | Rename, Fork, Unpin, Archive, optional Delete | Delete and failure Toasts appear only while Archive Manager exposes its Session deletion capability |
 
-Existing release ranges are preserved. Candidate 0.1.2 adds DSH `0.2.0-rc.2` installation support and uses its official session-menu slot and workspace navigation service. The plugin's top section remains separate from native workspace pinning. The release is pending Web/Desktop acceptance and publication; see [CHANGELOG](CHANGELOG.md). Legacy hosts retain the stable slot/ARIA bridge.
+Existing release ranges are preserved. Version 0.1.2 adds DSH `0.2.0-rc.2` installation support and uses its official session-menu slot and workspace navigation service. The plugin's top section remains separate from native workspace pinning. Web and official Electron Desktop installation and interactions have been verified; see [CHANGELOG](CHANGELOG.md). Legacy hosts retain the stable slot/ARIA bridge.
 
 ## How It Works
 

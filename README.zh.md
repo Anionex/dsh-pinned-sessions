@@ -60,7 +60,7 @@ dsh plugin add @anionex/dsh-pinned-sessions --profile desktop
 | Web | 重命名、分叉、取消置顶、归档 | 使用 DSH 官方组件和 Session/Workspace 服务 |
 | Desktop | 重命名、分叉、取消置顶、归档、可选删除 | 仅在 Archive Manager 暴露删除能力时显示删除和失败 Toast |
 
-保留既有版本范围。候选版 0.1.2 增加 DSH `0.2.0-rc.2` 安装支持，使用其官方会话菜单 slot 和工作区导航服务。插件顶部分组与宿主工作区内置置顶分别保留。发版仍待 Web/Desktop 验收及发布，见 [CHANGELOG](CHANGELOG.md)。旧版宿主继续使用稳定的 slot/ARIA 桥接。
+保留既有版本范围。0.1.2 版 增加 DSH `0.2.0-rc.2` 安装支持，使用其官方会话菜单 slot 和工作区导航服务。插件顶部分组与宿主工作区内置置顶分别保留。已通过 Web 及官方 Electron Desktop 安装与交互验收，见 [CHANGELOG](CHANGELOG.md)。旧版宿主继续使用稳定的 slot/ARIA 桥接。
 
 ## 工作原理
 
