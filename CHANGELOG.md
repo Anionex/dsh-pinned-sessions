@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 — 2026-10-18
+
+- Support DSH `0.2.1-rc.2` through explicit peer ranges and compatibility declarations.
+- 支持 DSH `0.2.1-rc.2`，补齐 peer 版本范围及兼容性声明。
+
 ## 0.1.2 — 2026-10-01
 
 - Use DSH 0.2's official session-menu slot and workspace navigation service. Keep the legacy menu bridge for older hosts, and bundle icons whose old host export names were removed.
